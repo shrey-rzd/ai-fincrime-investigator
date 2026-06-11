@@ -9,8 +9,9 @@ import json
 import pandas as pd
 import re
 
-# ✅ ML IMPORT
+# ✅ ML IMPORTS
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 # ======================
 # ✅ SESSION STATE
@@ -30,7 +31,7 @@ client = OpenAI(
 )
 
 # ======================
-# LOAD DATASET
+# LOAD DATA
 # ======================
 data = pd.read_csv("fraud_data.csv")
 
@@ -56,26 +57,32 @@ data["amount"] = data["text"].apply(lambda x: extract_features(x)[0])
 data["txn_type"] = data["text"].apply(lambda x: extract_features(x)[1])
 
 # ======================
-# ✅ ML PREPARATION
+# ✅ ML PREP
 # ======================
-
-# Fake labels (training signal)
 data["fraud_label"] = (
     (data["amount"] > 150000) &
     (data["txn_type"].isin(["TRANSFER", "CASH_OUT"]))
 ).astype(int)
 
-# Encode transaction type
 data["txn_type_encoded"] = data["txn_type"].astype("category").cat.codes
 
 # ======================
-# ✅ TRAIN ML MODEL
+# ✅ TRAIN MODEL
 # ======================
 X = data[["amount", "txn_type_encoded"]]
 y = data["fraud_label"]
 
 model = LogisticRegression()
 model.fit(X, y)
+
+# ======================
+# ✅ EVALUATE MODEL
+# ======================
+y_pred = model.predict(X)
+
+accuracy = accuracy_score(y, y_pred)
+precision = precision_score(y, y_pred)
+recall = recall_score(y, y_pred)
 
 # ======================
 # ✅ ML RISK SCORE
@@ -131,9 +138,9 @@ st.sidebar.write(suspicious_data.head(10))
 if len(suspicious_data) > 0:
     selected_index = st.sidebar.number_input(
         "Select Case",
-        min_value=0,
-        max_value=len(suspicious_data)-1,
-        value=0
+        0,
+        len(suspicious_data)-1,
+        0
     )
 
     if st.sidebar.button("Run Investigation"):
@@ -177,7 +184,7 @@ if len(suspicious_data) > 0:
         }
 
 # ======================
-# MAIN DISPLAY
+# ✅ MAIN CASE VIEW
 # ======================
 if st.session_state.case_data:
 
@@ -250,13 +257,16 @@ col1, col2 = st.columns(2)
 with col1:
     fig, ax = plt.subplots()
     data["risk_score"].hist(ax=ax)
+    ax.set_title("Risk Score Distribution")
     st.pyplot(fig)
 
 with col2:
     fig2, ax2 = plt.subplots()
     data["txn_type"].value_counts().plot(kind="bar", ax=ax2)
+    ax2.set_title("Transaction Types")
     st.pyplot(fig2)
 
+# KPIs
 total = len(data)
 high_risk = len(data[data["risk_score"] >= 7])
 
@@ -264,3 +274,14 @@ c1, c2, c3 = st.columns(3)
 c1.metric("Total Transactions", total)
 c2.metric("High Risk Cases", high_risk)
 c3.metric("High Risk %", f"{round(high_risk/total*100,2)}%")
+
+# ======================
+# ✅ MODEL METRICS
+# ======================
+st.markdown("### 🤖 Model Performance")
+
+c1, c2, c3 = st.columns(3)
+
+c1.metric("Accuracy", round(accuracy, 2))
+c2.metric("Precision", round(precision, 2))
+c3.metric("Recall", round(recall, 2))
