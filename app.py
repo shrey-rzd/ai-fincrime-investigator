@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import streamlit as st
 import os
 from dotenv import load_dotenv
@@ -258,3 +259,46 @@ if st.session_state.case_data:
         st.error("🔴 HIGH RISK")
     else:
         st.success("🟢 LOW RISK")
+
+# ======================
+# 📊 DASHBOARD ANALYTICS
+# ======================
+st.subheader("📊 System Analytics")
+
+if len(data) > 0:
+
+    col1, col2 = st.columns(2)
+
+    # ✅ Risk Score Distribution
+    with col1:
+        st.markdown("### Risk Score Distribution")
+
+        fig, ax = plt.subplots()
+        data["risk_score"].hist(ax=ax)
+        ax.set_title("Risk Score Distribution")
+        ax.set_xlabel("Score")
+        ax.set_ylabel("Frequency")
+
+        st.pyplot(fig)
+
+    # ✅ Transaction Type Distribution
+    with col2:
+        st.markdown("### Transaction Type Distribution")
+
+        fig2, ax2 = plt.subplots()
+        data["txn_type"].value_counts().plot(kind="bar", ax=ax2)
+        ax2.set_title("Transaction Types")
+
+        st.pyplot(fig2)
+
+    # ✅ Key Metrics
+    st.markdown("### Key Metrics")
+
+    total = len(data)
+    high_risk = len(data[data["risk_score"] >= 7])
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric("Total Transactions", total)
+    c2.metric("High Risk Cases", high_risk)
+    c3.metric("High Risk %", f"{round(high_risk/total*100,2)}%")
