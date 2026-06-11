@@ -9,34 +9,48 @@ import json
 import pandas as pd
 import re
 
-# ✅ ML IMPORTS
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 # ======================
-# ✅ SESSION STATE
-# ======================
-if "case_data" not in st.session_state:
-    st.session_state.case_data = None
-
-# ======================
-# LOAD API KEY
+# 🔐 API KEY
 # ======================
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
 
-client = OpenAI(
-    api_key=api_key,
-    http_client=httpx.Client(verify=False)
+client = OpenAI(api_key=api_key, http_client=httpx.Client(verify=False))
+
+# ======================
+# 🧾 UI
+# ======================
+st.title("🚨 Financial Crime Investigation Platform")
+
+# ======================
+# 📦 DATA SOURCE
+# ======================
+dataset_option = st.sidebar.selectbox(
+    "Select Dataset",
+    ["Default Dataset", "Sample Large Data"]
 )
 
-# ======================
-# LOAD DATA
-# ======================
-data = pd.read_csv("fraud_data.csv")
+def load_data():
+    try:
+        file = "fraud_data_large.csv" if dataset_option == "Sample Large Data" else "fraud_data.csv"
+        data = pd.read_csv(file)
+        data = data.dropna()
+        return data
+    except Exception as e:
+        st.error(f"Data Load Error: {e}")
+        return pd.DataFrame()
+
+data = load_data()
+
+if "text" not in data.columns:
+    st.error("Dataset must contain 'text' column")
+    st.stop()
 
 # ======================
-# FEATURE EXTRACTION
+# 🔍 FEATURE EXTRACTION
 # ======================
 def extract_features(text):
     amount_match = re.search(r'\d+', text)
@@ -57,11 +71,10 @@ data["amount"] = data["text"].apply(lambda x: extract_features(x)[0])
 data["txn_type"] = data["text"].apply(lambda x: extract_features(x)[1])
 
 # ======================
-# ✅ RULE-BASED SCORE (for comparison)
+# 🧠 RULE-BASED SCORE
 # ======================
 def rule_score(row):
     score = 0
-
     if row["amount"] > 200000:
         score += 6
     elif row["amount"] > 100000:
@@ -81,7 +94,7 @@ def rule_score(row):
 data["rule_score"] = data.apply(rule_score, axis=1)
 
 # ======================
-# ✅ ML PREP
+# 🤖 ML PREP
 # ======================
 data["fraud_label"] = (
     (data["amount"] > 150000) &
@@ -90,9 +103,6 @@ data["fraud_label"] = (
 
 data["txn_type_encoded"] = data["txn_type"].astype("category").cat.codes
 
-# ======================
-# ✅ TRAIN MODEL
-# ======================
 X = data[["amount", "txn_type_encoded"]]
 y = data["fraud_label"]
 
@@ -100,7 +110,7 @@ model = LogisticRegression()
 model.fit(X, y)
 
 # ======================
-# ✅ MODEL EVALUATION
+# 📊 MODEL EVALUATION
 # ======================
 y_pred = model.predict(X)
 
@@ -109,18 +119,25 @@ precision = precision_score(y, y_pred)
 recall = recall_score(y, y_pred)
 
 # ======================
-# ✅ ML RISK SCORE
+# ✅ ML SCORE
 # ======================
 data["risk_score"] = model.predict_proba(X)[:, 1] * 10
 
 # ======================
-# FILTER HIGH RISK
+# ✅ EXPLANATION FUNCTION
 # ======================
-suspicious_data = data[data["risk_score"] >= 7]
-suspicious_data = suspicious_data.sort_values(by="risk_score", ascending=False)
+def explain_prediction(amount, txn_type):
+    explanation = []
+    if amount > 100000:
+        explanation.append("High transaction amount")
+    if txn_type in ["TRANSFER", "CASH_OUT"]:
+        explanation.append("Risky transaction type")
+    if not explanation:
+        explanation.append("No strong indicators")
+    return explanation
 
 # ======================
-# SAVE CASE
+# 📥 SAVE CASE
 # ======================
 def save_case(alert, findings, report):
     case = {
@@ -130,148 +147,104 @@ def save_case(alert, findings, report):
         "findings": findings,
         "report": report
     }
-
     with open("case_history.json", "a") as f:
         f.write(json.dumps(case) + "\n")
-
     return case
 
 # ======================
-# SAVE EVALUATION
+# ✅ SAVE EVAL
 # ======================
 def save_evaluation(case_id, risk_score, decision):
     record = {
         "case_id": str(case_id),
         "risk_score": float(risk_score),
-        "decision": str(decision),
+        "decision": decision,
         "timestamp": str(datetime.datetime.now())
     }
-
     with open("evaluation_log.json", "a") as f:
         f.write(json.dumps(record) + "\n")
 
 # ======================
-# UI HEADER
+# ✅ FILTER
 # ======================
-st.title("🚨 Financial Crime Investigation Platform")
+suspicious_data = data[data["risk_score"] >= 7].sort_values(by="risk_score", ascending=False)
 
 # ======================
-# SIDEBAR
+# 📊 SIDEBAR
 # ======================
 st.sidebar.subheader("High Risk Cases")
 st.sidebar.write(suspicious_data.head(10))
 
 if len(suspicious_data) > 0:
-    selected_index = st.sidebar.number_input(
-        "Select Case",
-        0,
-        len(suspicious_data)-1,
-        0
-    )
+    idx = st.sidebar.number_input("Select Case", 0, len(suspicious_data)-1, 0)
 
     if st.sidebar.button("Run Investigation"):
-
-        row = suspicious_data.iloc[selected_index]
-
-        text = row["text"]
-        amount = row["amount"]
-        txn_type = row["txn_type"]
-        risk_score = round(row["risk_score"], 2)
+        row = suspicious_data.iloc[idx]
 
         alert = {
-            "customer_id": f"C{selected_index}",
-            "amount": amount,
-            "country": "India",
-            "alert_type": txn_type
+            "customer_id": f"C{idx}",
+            "amount": row["amount"],
+            "alert_type": row["txn_type"]
         }
 
         findings = []
-
-        if amount > 100000:
-            findings.append("High transaction amount")
-
-        if txn_type in ["TRANSFER", "CASH_OUT"]:
-            findings.append("High-risk transaction type")
+        if row["amount"] > 100000:
+            findings.append("High amount")
+        if row["txn_type"] in ["TRANSFER", "CASH_OUT"]:
+            findings.append("Risky type")
 
         report = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"Alert: {alert}, Findings: {findings}"
+            input=f"Analyze fraud risk: {alert}, findings: {findings}"
         ).output_text
 
-        case = save_case(alert, findings, report)
-
-        st.session_state.case_data = {
-            "text": text,
+        st.session_state.case = {
+            "text": row["text"],
             "alert": alert,
-            "findings": findings,
             "report": report,
-            "risk_score": risk_score,
-            "case_id": case["case_id"]
+            "risk_score": round(row["risk_score"], 2),
+            "findings": findings,
+            "case_id": f"C{idx}"
         }
 
 # ======================
-# MAIN CASE VIEW
+# 📄 CASE VIEW
 # ======================
-if st.session_state.case_data:
+if "case" in st.session_state:
 
-    case_data = st.session_state.case_data
+    case = st.session_state.case
 
-    st.markdown("### 🧾 Case Overview")
     c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric("Case ID", case_data["case_id"])
-    c2.metric("Amount", f"₹ {case_data['alert']['amount']}")
-    c3.metric("Type", case_data["alert"]["alert_type"])
-    c4.metric("Risk Score", f"{case_data['risk_score']}/10")
-
-    st.divider()
+    c1.metric("Case ID", case["case_id"])
+    c2.metric("Amount", case["alert"]["amount"])
+    c3.metric("Type", case["alert"]["alert_type"])
+    c4.metric("Risk Score", case["risk_score"])
 
     st.subheader("📥 Transaction")
-    st.info(case_data["text"])
+    st.write(case["text"])
 
-    with st.expander("📊 Alert Details"):
-        st.json(case_data["alert"])
+    st.subheader("📄 Report")
+    st.write(case["report"])
 
-    st.subheader("⚠️ Key Findings")
-    for f in case_data["findings"]:
-        st.markdown(
-            f"<span style='background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:15px;margin-right:6px;'>{f}</span>",
-            unsafe_allow_html=True
-        )
+    st.subheader("🧠 Explanation")
+    for e in explain_prediction(case["alert"]["amount"], case["alert"]["alert_type"]):
+        st.write(f"• {e}")
 
-    st.subheader("📄 Investigation Report")
-    st.success(case_data["report"])
-
-    st.subheader("💬 Ask Investigator")
-    question = st.text_input("Ask a question")
-
-    if st.button("Ask") and question:
-        answer = client.responses.create(
+    # QA
+    q = st.text_input("Ask question")
+    if st.button("Ask"):
+        ans = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"Case: {case_data} \n Question: {question}"
+            input=f"{case} Question: {q}"
         )
-        st.info(answer.output_text)
+        st.write(ans.output_text)
 
-    st.subheader("👨‍💼 Analyst Decision")
-    decision = st.radio("", ["Approve ✅", "Reject ❌", "Escalate 🔴"])
+    # Decision
+    decision = st.radio("Decision", ["Approve", "Reject", "Escalate"])
 
     if st.button("Submit Decision"):
-        st.success(f"{decision} recorded ✅")
-
-        with open("decisions_log.txt", "a") as f:
-            f.write(f"{case_data['case_id']} - {decision}\n")
-
-        save_evaluation(
-            case_data["case_id"],
-            case_data["risk_score"],
-            decision
-        )
-
-    st.subheader("📊 Risk Status")
-    if case_data["risk_score"] >= 7:
-        st.error("🔴 HIGH RISK")
-    else:
-        st.success("🟢 LOW RISK")
+        save_evaluation(case["case_id"], case["risk_score"], decision)
+        st.success("Decision saved")
 
 # ======================
 # 📊 DASHBOARD
@@ -290,54 +263,26 @@ with col2:
     data["txn_type"].value_counts().plot(kind="bar", ax=ax2)
     st.pyplot(fig2)
 
-# KPIs
-total = len(data)
-high_risk = len(data[data["risk_score"] >= 7])
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Total Transactions", total)
-c2.metric("High Risk Cases", high_risk)
-c3.metric("High Risk %", f"{round(high_risk/total*100,2)}%")
-
 # ======================
 # 🤖 MODEL METRICS
 # ======================
-st.markdown("### 🤖 Model Performance")
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Accuracy", round(accuracy, 2))
-c2.metric("Precision", round(precision, 2))
-c3.metric("Recall", round(recall, 2))
+st.subheader("🤖 Model Performance")
+st.write("Accuracy:", round(accuracy,2))
+st.write("Precision:", round(precision,2))
+st.write("Recall:", round(recall,2))
 
 # ======================
 # 🧠 RULE vs ML
 # ======================
-st.markdown("### 🧠 Rule vs ML Comparison")
-
-rule_high = len(data[data["rule_score"] >= 7])
-ml_high = len(data[data["risk_score"] >= 7])
-
-c1, c2 = st.columns(2)
-c1.metric("Rule-Based High Risk", rule_high)
-c2.metric("ML-Based High Risk", ml_high)
+st.subheader("🧠 Rule vs ML Comparison")
+st.write("Rule High:", len(data[data["rule_score"]>=7]))
+st.write("ML High:", len(data[data["risk_score"]>=7]))
 
 # ======================
 # 🔍 DISAGREEMENT
 # ======================
-st.markdown("### 🔍 Where ML and Rules Disagree")
+st.subheader("🔍 Disagreement Analysis")
 
-disagreement = data[
-    (data["rule_score"] < 7) &
-    (data["risk_score"] >= 7)
-]
-
-st.metric("ML flagged but Rule missed", len(disagreement))
-
-if len(disagreement) > 0:
-    st.dataframe(
-        disagreement[["text", "rule_score", "risk_score"]]
-        .head(5)
-        .sort_values(by="risk_score", ascending=False)
-    )
-else:
-    st.info("No disagreement found")
+disagree = data[(data["rule_score"]<7) & (data["risk_score"]>=7)]
+st.write("ML caught but rules missed:", len(disagree))
+st.dataframe(disagree.head())
