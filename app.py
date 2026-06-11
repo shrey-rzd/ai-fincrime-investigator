@@ -9,6 +9,9 @@ import json
 import pandas as pd
 import re
 
+# ✅ ML IMPORT
+from sklearn.linear_model import LogisticRegression
+
 # ======================
 # ✅ SESSION STATE
 # ======================
@@ -53,28 +56,31 @@ data["amount"] = data["text"].apply(lambda x: extract_features(x)[0])
 data["txn_type"] = data["text"].apply(lambda x: extract_features(x)[1])
 
 # ======================
-# RISK SCORING
+# ✅ ML PREPARATION
 # ======================
-def calculate_risk(row):
-    score = 0
 
-    if row["amount"] > 200000:
-        score += 6
-    elif row["amount"] > 100000:
-        score += 4
-    elif row["amount"] > 50000:
-        score += 2
+# Fake labels (training signal)
+data["fraud_label"] = (
+    (data["amount"] > 150000) &
+    (data["txn_type"].isin(["TRANSFER", "CASH_OUT"]))
+).astype(int)
 
-    if row["txn_type"] == "CASH_OUT":
-        score += 4
-    elif row["txn_type"] == "TRANSFER":
-        score += 3
-    elif row["txn_type"] == "PAYMENT":
-        score += 1
+# Encode transaction type
+data["txn_type_encoded"] = data["txn_type"].astype("category").cat.codes
 
-    return min(score, 10)
+# ======================
+# ✅ TRAIN ML MODEL
+# ======================
+X = data[["amount", "txn_type_encoded"]]
+y = data["fraud_label"]
 
-data["risk_score"] = data.apply(calculate_risk, axis=1)
+model = LogisticRegression()
+model.fit(X, y)
+
+# ======================
+# ✅ ML RISK SCORE
+# ======================
+data["risk_score"] = model.predict_proba(X)[:, 1] * 10
 
 # ✅ FILTER HIGH RISK
 suspicious_data = data[data["risk_score"] >= 7]
@@ -98,10 +104,9 @@ def save_case(alert, findings, report):
     return case
 
 # ======================
-# ✅ SAVE EVALUATION (FIXED)
+# SAVE EVALUATION
 # ======================
 def save_evaluation(case_id, risk_score, decision):
-
     record = {
         "case_id": str(case_id),
         "risk_score": float(risk_score),
@@ -109,11 +114,8 @@ def save_evaluation(case_id, risk_score, decision):
         "timestamp": str(datetime.datetime.now())
     }
 
-    try:
-        with open("evaluation_log.json", "a") as f:
-            f.write(json.dumps(record) + "\n")
-    except Exception as e:
-        print("Error saving evaluation:", e)
+    with open("evaluation_log.json", "a") as f:
+        f.write(json.dumps(record) + "\n")
 
 # ======================
 # UI HEADER
@@ -141,7 +143,7 @@ if len(suspicious_data) > 0:
         text = row["text"]
         amount = row["amount"]
         txn_type = row["txn_type"]
-        risk_score = row["risk_score"]
+        risk_score = round(row["risk_score"], 2)
 
         alert = {
             "customer_id": f"C{selected_index}",
@@ -158,24 +160,13 @@ if len(suspicious_data) > 0:
         if txn_type in ["TRANSFER", "CASH_OUT"]:
             findings.append("High-risk transaction type")
 
-        # AI REPORT
-        report_prompt = f"""
-        Investigate fraud:
-
-        Alert: {alert}
-        Findings: {findings}
-
-        Provide Risk Level, Reasons, Recommendation
-        """
-
         report = client.responses.create(
             model="gpt-4.1-mini",
-            input=report_prompt
+            input=f"Alert: {alert}, Findings: {findings}"
         ).output_text
 
         case = save_case(alert, findings, report)
 
-        # ✅ STORE SESSION DATA
         st.session_state.case_data = {
             "text": text,
             "alert": alert,
@@ -186,13 +177,12 @@ if len(suspicious_data) > 0:
         }
 
 # ======================
-# ✅ MAIN DISPLAY
+# MAIN DISPLAY
 # ======================
 if st.session_state.case_data:
 
     case_data = st.session_state.case_data
 
-    # 🔷 TOP BAR
     st.markdown("### 🧾 Case Overview")
     c1, c2, c3, c4 = st.columns(4)
 
@@ -203,15 +193,12 @@ if st.session_state.case_data:
 
     st.divider()
 
-    # 🔷 TRANSACTION
     st.subheader("📥 Transaction")
     st.info(case_data["text"])
 
-    # 🔷 ALERT
     with st.expander("📊 Alert Details"):
         st.json(case_data["alert"])
 
-    # 🔷 FINDINGS
     st.subheader("⚠️ Key Findings")
     for f in case_data["findings"]:
         st.markdown(
@@ -219,13 +206,9 @@ if st.session_state.case_data:
             unsafe_allow_html=True
         )
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # 🔷 REPORT
     st.subheader("📄 Investigation Report")
     st.success(case_data["report"])
 
-    # 🔷 QA AGENT
     st.subheader("💬 Ask Investigator")
     question = st.text_input("Ask a question")
 
@@ -236,7 +219,6 @@ if st.session_state.case_data:
         )
         st.info(answer.output_text)
 
-    # 🔷 DECISION
     st.subheader("👨‍💼 Analyst Decision")
     decision = st.radio("", ["Approve ✅", "Reject ❌", "Escalate 🔴"])
 
@@ -252,53 +234,33 @@ if st.session_state.case_data:
             decision
         )
 
-    # 🔷 RISK STATUS
     st.subheader("📊 Risk Status")
-
     if case_data["risk_score"] >= 7:
         st.error("🔴 HIGH RISK")
     else:
         st.success("🟢 LOW RISK")
 
 # ======================
-# 📊 DASHBOARD ANALYTICS
+# 📊 DASHBOARD
 # ======================
 st.subheader("📊 System Analytics")
 
-if len(data) > 0:
+col1, col2 = st.columns(2)
 
-    col1, col2 = st.columns(2)
+with col1:
+    fig, ax = plt.subplots()
+    data["risk_score"].hist(ax=ax)
+    st.pyplot(fig)
 
-    # ✅ Risk Score Distribution
-    with col1:
-        st.markdown("### Risk Score Distribution")
+with col2:
+    fig2, ax2 = plt.subplots()
+    data["txn_type"].value_counts().plot(kind="bar", ax=ax2)
+    st.pyplot(fig2)
 
-        fig, ax = plt.subplots()
-        data["risk_score"].hist(ax=ax)
-        ax.set_title("Risk Score Distribution")
-        ax.set_xlabel("Score")
-        ax.set_ylabel("Frequency")
+total = len(data)
+high_risk = len(data[data["risk_score"] >= 7])
 
-        st.pyplot(fig)
-
-    # ✅ Transaction Type Distribution
-    with col2:
-        st.markdown("### Transaction Type Distribution")
-
-        fig2, ax2 = plt.subplots()
-        data["txn_type"].value_counts().plot(kind="bar", ax=ax2)
-        ax2.set_title("Transaction Types")
-
-        st.pyplot(fig2)
-
-    # ✅ Key Metrics
-    st.markdown("### Key Metrics")
-
-    total = len(data)
-    high_risk = len(data[data["risk_score"] >= 7])
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric("Total Transactions", total)
-    c2.metric("High Risk Cases", high_risk)
-    c3.metric("High Risk %", f"{round(high_risk/total*100,2)}%")
+c1, c2, c3 = st.columns(3)
+c1.metric("Total Transactions", total)
+c2.metric("High Risk Cases", high_risk)
+c3.metric("High Risk %", f"{round(high_risk/total*100,2)}%")
