@@ -57,6 +57,30 @@ data["amount"] = data["text"].apply(lambda x: extract_features(x)[0])
 data["txn_type"] = data["text"].apply(lambda x: extract_features(x)[1])
 
 # ======================
+# ✅ RULE-BASED SCORE (for comparison)
+# ======================
+def rule_score(row):
+    score = 0
+
+    if row["amount"] > 200000:
+        score += 6
+    elif row["amount"] > 100000:
+        score += 4
+    elif row["amount"] > 50000:
+        score += 2
+
+    if row["txn_type"] == "CASH_OUT":
+        score += 4
+    elif row["txn_type"] == "TRANSFER":
+        score += 3
+    elif row["txn_type"] == "PAYMENT":
+        score += 1
+
+    return min(score, 10)
+
+data["rule_score"] = data.apply(rule_score, axis=1)
+
+# ======================
 # ✅ ML PREP
 # ======================
 data["fraud_label"] = (
@@ -76,7 +100,7 @@ model = LogisticRegression()
 model.fit(X, y)
 
 # ======================
-# ✅ EVALUATE MODEL
+# ✅ MODEL EVALUATION
 # ======================
 y_pred = model.predict(X)
 
@@ -89,7 +113,9 @@ recall = recall_score(y, y_pred)
 # ======================
 data["risk_score"] = model.predict_proba(X)[:, 1] * 10
 
-# ✅ FILTER HIGH RISK
+# ======================
+# FILTER HIGH RISK
+# ======================
 suspicious_data = data[data["risk_score"] >= 7]
 suspicious_data = suspicious_data.sort_values(by="risk_score", ascending=False)
 
@@ -184,7 +210,7 @@ if len(suspicious_data) > 0:
         }
 
 # ======================
-# ✅ MAIN CASE VIEW
+# MAIN CASE VIEW
 # ======================
 if st.session_state.case_data:
 
@@ -257,13 +283,11 @@ col1, col2 = st.columns(2)
 with col1:
     fig, ax = plt.subplots()
     data["risk_score"].hist(ax=ax)
-    ax.set_title("Risk Score Distribution")
     st.pyplot(fig)
 
 with col2:
     fig2, ax2 = plt.subplots()
     data["txn_type"].value_counts().plot(kind="bar", ax=ax2)
-    ax2.set_title("Transaction Types")
     st.pyplot(fig2)
 
 # KPIs
@@ -276,12 +300,44 @@ c2.metric("High Risk Cases", high_risk)
 c3.metric("High Risk %", f"{round(high_risk/total*100,2)}%")
 
 # ======================
-# ✅ MODEL METRICS
+# 🤖 MODEL METRICS
 # ======================
 st.markdown("### 🤖 Model Performance")
 
 c1, c2, c3 = st.columns(3)
-
 c1.metric("Accuracy", round(accuracy, 2))
 c2.metric("Precision", round(precision, 2))
 c3.metric("Recall", round(recall, 2))
+
+# ======================
+# 🧠 RULE vs ML
+# ======================
+st.markdown("### 🧠 Rule vs ML Comparison")
+
+rule_high = len(data[data["rule_score"] >= 7])
+ml_high = len(data[data["risk_score"] >= 7])
+
+c1, c2 = st.columns(2)
+c1.metric("Rule-Based High Risk", rule_high)
+c2.metric("ML-Based High Risk", ml_high)
+
+# ======================
+# 🔍 DISAGREEMENT
+# ======================
+st.markdown("### 🔍 Where ML and Rules Disagree")
+
+disagreement = data[
+    (data["rule_score"] < 7) &
+    (data["risk_score"] >= 7)
+]
+
+st.metric("ML flagged but Rule missed", len(disagreement))
+
+if len(disagreement) > 0:
+    st.dataframe(
+        disagreement[["text", "rule_score", "risk_score"]]
+        .head(5)
+        .sort_values(by="risk_score", ascending=False)
+    )
+else:
+    st.info("No disagreement found")
