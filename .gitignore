@@ -1,1 +1,5 @@
 .env
+case_history.json
+decisions_log.txt
+evaluation_log.json
+__pycache__/
