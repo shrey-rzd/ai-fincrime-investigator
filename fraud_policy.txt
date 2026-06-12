@@ -1,0 +1,26 @@
+[HIGH VALUE TRANSACTION RULES]
+Transactions above INR 200,000 are considered high-risk and require enhanced due diligence.
+Transactions between INR 100,000 and INR 200,000 require monitoring and pattern analysis.
+
+[TRANSACTION TYPE RISK]
+CASH_OUT transactions are commonly associated with fraud and rapid fund extraction.
+TRANSFER transactions are considered medium to high risk, especially when combined with high value.
+PAYMENT transactions are generally low risk but can become risky when frequency or value increases.
+
+[VELOCITY PATTERNS]
+Multiple transactions in a short timeframe indicate potential fraud or laundering.
+Rapid movement of funds across accounts is considered suspicious behavior.
+
+[BEHAVIORAL INDICATORS]
+Unusual transaction patterns compared to historical behavior indicate potential fraud.
+Sudden increase in transaction size or frequency must be flagged.
+
+[AML (ANTI-MONEY LAUNDERING)]
+Layering of transactions (multiple intermediate transfers) indicates potential laundering.
+Transactions without clear economic purpose are considered suspicious.
+Repeated transfers across accounts may indicate structuring.
+
+[ESCALATION GUIDELINES]
+Transactions with combined indicators (high amount + risky type) must be escalated.
+Borderline cases must be reviewed manually.
+All high-risk flagged cases should be investigated further before decision.

@@ -1,0 +1,62 @@
+[
+  {
+    "case_id": "CASE001",
+    "transaction": "Transfer of INR 250000 via TRANSFER",
+    "features": {
+      "amount": 250000,
+      "type": "TRANSFER"
+    },
+    "findings": [
+      "High transaction amount",
+      "Risky transaction type"
+    ],
+    "decision": "Escalated",
+    "outcome": "Confirmed Fraud",
+    "reason": "Large transfer combined with risky channel similar to past fraud patterns"
+  },
+  {
+    "case_id": "CASE002",
+    "transaction": "Cash out of INR 180000 via CASH_OUT",
+    "features": {
+      "amount": 180000,
+      "type": "CASH_OUT"
+    },
+    "findings": [
+      "High transaction amount",
+      "Known high-risk transaction type"
+    ],
+    "decision": "Escalated",
+    "outcome": "Fraud Suspicion",
+    "reason": "Cash-out transactions at high value indicate rapid withdrawal risk"
+  },
+  {
+    "case_id": "CASE003",
+    "transaction": "Payment of INR 40000 via PAYMENT",
+    "features": {
+      "amount": 40000,
+      "type": "PAYMENT"
+    },
+    "findings": [
+      "Low amount",
+      "Low-risk transaction type"
+    ],
+    "decision": "Approved",
+    "outcome": "Normal",
+    "reason": "Transaction aligned with normal behavior"
+  },
+  {
+    "case_id": "CASE004",
+    "transaction": "Transfer of INR 120000 via TRANSFER",
+    "features": {
+      "amount": 120000,
+      "type": "TRANSFER"
+    },
+    "findings": [
+      "Moderate value",
+      "Risky type"
+    ],
+    "decision": "Escalated",
+    "outcome": "Under Review",
+    "reason": "Moderate value but risky type required further investigation"
+  }
+]
